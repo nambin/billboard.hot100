@@ -10,15 +10,11 @@ pip install -e .
 
 Requires Python ≥ 3.11.
 
-## One-time auth setup
+## Auth file
 
-`billboard-to-ytmusic-sync` uses `ytmusicapi`'s browser-headers auth (not OAuth). Generate a credential file once:
+The tool needs a `browser.json` containing your YouTube Music session cookies for `ytmusicapi` to act on your behalf. Generate it once and pass its path via `--auth-file` (or place it at `./browser.json` to use the default). Browser cookies eventually expire (months, typically) — when they do, regenerate the file.
 
-```bash
-ytmusicapi browser
-```
-
-Follow the prompts (paste request headers from a logged-in YouTube Music browser session). This writes `browser.json` in the current directory. Pass its path via `--auth-file` on every invocation. Browser cookies eventually expire (months, typically) — when they do, `billboard-to-ytmusic-sync` exits with a clear message and you re-run `ytmusicapi browser`.
+> _Generation method TBD._
 
 ## Usage
 
@@ -35,7 +31,7 @@ Flags:
 | Flag             | Default                      | Notes                                                  |
 | ---------------- | ---------------------------- | ------------------------------------------------------ |
 | `--playlist-id`  | hard-coded in source         | Override with the opaque string after `list=` in the playlist URL. |
-| `--auth-file`    | `./browser.json`             | Path to the file produced by `ytmusicapi browser`.     |
+| `--auth-file`    | `./browser.json`             | Path to the YouTube Music auth `browser.json`.         |
 | `--top`          | `30`                         | 1–100.                                                 |
 | `--dry-run`      | off                          | Resolve and print the report; no playlist edits.       |
 
@@ -60,7 +56,7 @@ Playlist refreshed: 28 songs (2 skipped).
 | `0`  | Success (including runs with skipped songs). |
 | `1`  | User error (bad flags, missing auth file).  |
 | `2`  | Billboard parse failure.                    |
-| `3`  | YouTube Music auth failure — re-run `ytmusicapi browser`. |
+| `3`  | YouTube Music auth failure — regenerate `browser.json`.   |
 | `4`  | Network/API failure after retries.          |
 
 ## Tests
@@ -75,4 +71,4 @@ The parser unit test (`tests/test_billboard_parser.py`) is the most important on
 ## Troubleshooting
 
 - **Exit code 2 (parse failure)**: Billboard changed their HTML. Update the selectors in [billboard_sync/billboard.py](billboard_sync/billboard.py) and add a fresh weekly snapshot under [tests/fixtures/](tests/fixtures/).
-- **Exit code 3 (auth failure)**: cookies expired. Re-run `ytmusicapi browser`, point `--auth-file` at the new file.
+- **Exit code 3 (auth failure)**: cookies expired. Regenerate `browser.json` and point `--auth-file` at the new file.

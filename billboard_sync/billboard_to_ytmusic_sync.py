@@ -40,7 +40,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--auth-file",
         default="./browser.json",
-        help="Path to ytmusicapi browser.json.",
+        help="Path to YouTube Music auth file (browser.json).",
     )
     p.add_argument("--top", type=int, default=30, help="Chart positions to sync (1-100, default 30).")
     p.add_argument("--dry-run", action="store_true", help="Resolve and report only; no playlist edits.")
@@ -94,7 +94,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     except YTMusicAuthError as exc:
         print(
             f"YouTube Music auth failed: {exc}\n"
-            "Re-run `ytmusicapi browser` to refresh credentials.",
+            "Regenerate browser.json to refresh credentials.",
             file=sys.stderr,
         )
         return EXIT_AUTH_FAILURE
@@ -111,7 +111,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         except YTMusicAuthError as exc:
             print(
                 f"\nYouTube Music auth failed mid-run: {exc}\n"
-                "Re-run `ytmusicapi browser`.",
+                "Regenerate browser.json.",
                 file=sys.stderr,
             )
             return EXIT_AUTH_FAILURE

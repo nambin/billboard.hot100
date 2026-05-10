@@ -13,7 +13,7 @@ CLI flags only — no config file, no env vars. Both `--playlist-id` and `--auth
 | Flag             | Default                              | Meaning                                                                     |
 | ---------------- | ------------------------------------ | --------------------------------------------------------------------------- |
 | `--playlist-id`  | hard-coded constant                  | YouTube Music playlist ID (the opaque string after `list=` in the URL).     |
-| `--auth-file`    | `./browser.json`                     | Path to a `browser.json` produced by `ytmusicapi browser`.                  |
+| `--auth-file`    | `./browser.json`                     | Path to the YouTube Music auth `browser.json` (generation method TBD).      |
 | `--top`          | `30`                                 | Number of chart positions to sync. Allowed range: 1–100.                    |
 | `--dry-run`      | off                                  | Fetch chart, resolve matches, print the report — but make no playlist edits. |
 
@@ -68,18 +68,7 @@ A YouTube Music search result is an acceptable match for a Billboard `(title, ar
 
 ## Authentication
 
-`ytmusicapi` browser-headers, **not** OAuth. One-time setup, external to this binary:
-
-```bash
-pip install ytmusicapi
-ytmusicapi browser
-# follow prompts: paste request headers from a logged-in YouTube Music browser session
-# this writes browser.json in the current directory
-```
-
-(On Windows where the prompt's interactive flow is awkward, an alternative is to programmatically pass a captured Chrome `Copy as cURL (bash)` block to `ytmusicapi.setup.setup(filepath, headers_raw=...)`. README documents this.)
-
-The user passes the path to that file via `--auth-file`. Browser cookies eventually expire (months, typically). When `ytmusicapi` raises an auth-related exception, the binary exits non-zero with a clear message instructing the user to re-run `ytmusicapi browser`. Do not silently retry auth failures.
+The binary uses `ytmusicapi`'s browser-headers auth (**not** OAuth). It expects a `browser.json` containing the user's YouTube Music session headers, passed via `--auth-file`. The mechanism for generating that file is TBD — the file's existence is a prerequisite for any non-`--dry-run` invocation. Browser cookies eventually expire (months, typically). When `ytmusicapi` raises an auth-related exception, the binary exits non-zero with a clear message instructing the user to regenerate the auth file. Do not silently retry auth failures.
 
 ## Output
 
@@ -105,7 +94,7 @@ Exit codes: `0` success (including with skipped songs), `1` user error (bad flag
 ## Error handling
 
 - **Billboard parse failure**: exit `2` with a message naming the parser module. Do NOT touch the playlist.
-- **YouTube Music auth failure** (at any point in the run): exit `3` with instructions to re-run `ytmusicapi browser`.
+- **YouTube Music auth failure** (at any point in the run): exit `3` with instructions to regenerate the auth file.
 - **Network errors on individual HTTP calls**: retry up to 3 times with exponential backoff (1s, 2s, 4s). After 3 failures on the Billboard fetch → exit `4`. After 3 failures on a single search → skip that song for this run and continue.
 - **Playlist edit failure mid-update**: no revert is attempted. If `clear_playlist` succeeds and `add_playlist_items` fails, the playlist is left empty until the next successful run cleans it up. Acceptable because the binary is idempotent in the "same final state" sense — the next run will reach the desired state regardless of the previous run's failure point.
 
@@ -139,7 +128,7 @@ There are no manual acceptance tests beyond running the binary against a real pl
 - No reading/writing playlist metadata other than its track list.
 - No Spotify, Apple Music, or other backends.
 - No partial-update / diff optimization — replace-mode is a full clear-and-rebuild every time.
-- No retry-on-stale-auth — surface the error, the user re-runs `ytmusicapi browser`.
+- No retry-on-stale-auth — surface the error and let the user regenerate the auth file.
 - No Billboard 200, Global 200, or other charts.
 - **No caching layer** — every run does a fresh search per chart entry. Simplicity beats API-call thrift at the current scale.
 
