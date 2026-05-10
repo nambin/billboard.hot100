@@ -59,11 +59,11 @@ class ChartEntry:
   "updated_at": "2026-05-09T14:03:21Z",
   "entries": {
     "<normalized_key>": {
-      "billboard_title": "FLOWER",
-      "billboard_artist": "JISOO",
+      "billboard_title": "This Boy",
+      "billboard_artist": "The Beatles",
       "video_id": "abc123XYZ",
-      "ytm_title": "FLOWER",
-      "ytm_artist": "JISOO",
+      "ytm_title": "This Boy",
+      "ytm_artist": "The Beatles",
       "match_score": 0.95,
       "last_seen_week": "2026-05-09",
       "first_resolved": "2026-04-12"
@@ -138,34 +138,6 @@ Exit codes: `0` success (including with skipped songs), `1` user error (bad flag
 - **Playlist edit failure mid-update**: the playlist must not be left half-replaced. Strategy: read the current playlist contents first; compute the full diff (removes + adds); if any single API call in the apply phase fails, attempt a best-effort revert to the pre-run state and exit non-zero. (`ytmusicapi` doesn't expose transactions, so this is best-effort.)
 - **Cache write failure**: log the error but exit `0` if the playlist update succeeded — a stale cache is recoverable, an inconsistent playlist isn't.
 
-## Project layout
-
-```
-billboard.hot100/
-├── README.md                   # setup (ytmusicapi browser), invocation examples, troubleshooting
-├── pyproject.toml              # dependencies + console_scripts entry point `billboard-sync`
-├── billboard_sync/
-│   ├── __init__.py
-│   ├── __main__.py             # python -m billboard_sync …
-│   ├── cli.py                  # argparse + orchestration
-│   ├── billboard.py            # parse_billboard_hot_100() — the brittle layer
-│   ├── ytmusic.py              # search + playlist editing
-│   ├── cache.py                # load/save JSON cache + normalize_key()
-│   └── matcher.py              # validate_match()
-├── tests/
-│   ├── fixtures/
-│   │   └── billboard_sample.html
-│   ├── test_billboard_parser.py
-│   ├── test_cache_normalize.py
-│   └── test_matcher.py
-└── cache/
-    └── .gitkeep
-```
-
-Note: the package import name (`billboard_sync`) uses an underscore because Python module names cannot contain dots; the repo directory uses the dotted form `billboard.hot100` per project convention.
-
-"Binary" = a console-script entry point installable via `pip install -e .` and runnable as `billboard-sync --playlist-id … --auth-file …`. PyInstaller-style single-file packaging is out of scope for v1.
-
 ## Suggested dependencies
 
 - Python ≥ 3.11
@@ -180,7 +152,7 @@ Note: the package import name (`billboard_sync`) uses an underscore because Pyth
 
 1. **Parser unit test** — given the saved snapshot in `tests/fixtures/billboard_sample.html`, `parse_billboard_hot_100(html, 30)` returns exactly 30 entries with stable rank/title/artist values. This is the *only* test that must exist for v1; the parser is the most fragile layer and the rest is plumbing.
 
-2. **Normalization unit test** — `normalize_key("FLOWER", "JISOO")` equals `normalize_key("Flower!", "Jisoo  ")`. `normalize_key("Luther", "Kendrick Lamar & SZA")` equals `normalize_key("Luther", "Kendrick Lamar")`. Cover at least: punctuation stripping, case-folding, whitespace collapse, "feat./&" tail removal.
+2. **Normalization unit test** — `normalize_key("This Boy", "The Beatles")` equals `normalize_key("this boy!", "The Beatles  ")`. `normalize_key("Luther", "Kendrick Lamar & SZA")` equals `normalize_key("Luther", "Kendrick Lamar")`. Cover at least: punctuation stripping, case-folding, whitespace collapse, "feat./&" tail removal.
 
 3. **Idempotent run (manual)** — run twice in a row within the same chart week. Second run reports `removed 0, added 0` and zero search calls in the log.
 
