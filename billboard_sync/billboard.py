@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 CHART_URL = "https://www.billboard.com/charts/hot-100/"
-USER_AGENT = "Mozilla/5.0 (compatible; billboard-sync/0.1)"
+USER_AGENT = "Mozilla/5.0 (compatible; billboard-to-ytmusic-sync/0.1)"
 
 
 @dataclass(frozen=True)
