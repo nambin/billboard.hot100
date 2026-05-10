@@ -8,6 +8,9 @@ dist/
 # Local auth (per-user)
 browser.json
 
+# Claude Code per-user permission overlay (shared `settings.json` is committed)
+.claude/settings.local.json
+
 # Editor
 .vscode/
 .idea/
