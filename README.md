@@ -80,6 +80,14 @@ Resolving top 30…
   …
  18  Some Obscure Track           Some Artist                    ✗ skipped (LLM no acceptable match)
 
+Run stats:
+  YT Music search calls: 32
+  LLM calls:             3
+  Heuristic matches:     27
+  LLM phase 1 matches:   1
+  LLM phase 2 matches:   1
+  Skipped:               1
+
 Playlist refreshed: 29 songs (1 skipped).
 Title updated:       Billboard Hot 100 (May 16th, 2026)
 Description updated: Billboard Hot 100 (Top 30). Chart week of May 16th, 2026. Updated May 16th, 2026.

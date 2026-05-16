@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -134,13 +135,28 @@ def _format_candidate(r: SearchResult, score: float, reason: str) -> str:
     return f'       - "{r.title}" by {artists} [{r.kind or "?"}] (score {score:.2f}) — {reason}'
 
 
+@dataclass
+class ResolveStats:
+    """Per-entry counters surfaced to the caller for end-of-run summary.
+
+    `outcome` bins the entry into one of four buckets:
+      - "heuristic"  : heuristic matcher accepted a candidate
+      - "llm-phase1" : LLM picked from the heuristic's candidates
+      - "llm-phase2" : LLM picked from the widened (videos-allowed) search
+      - "skipped"    : nothing acceptable found (or search/LLM errored)
+    """
+    yt_calls: int = 0
+    llm_calls: int = 0
+    outcome: str = "skipped"
+
+
 def _resolve_entry(
     entry: ChartEntry,
     yt: YTMusicClient,
     search_limit: int = 5,
     llm: Optional[LLMMatcher] = None,
-) -> tuple[Optional[str], str, list[tuple[SearchResult, float, str]]]:
-    """Search YT Music for the entry and return (video_id, status, attempts).
+) -> tuple[Optional[str], str, list[tuple[SearchResult, float, str]], ResolveStats]:
+    """Search YT Music for the entry and return (video_id, status, attempts, stats).
 
     `attempts` lists every candidate examined as (result, score_0_to_1, reason).
     Reason values include heuristic verdicts ("matched", "kind=...",
@@ -155,24 +171,29 @@ def _resolve_entry(
        from the new (possibly video-kind) candidates.
     """
     attempts: list[tuple[SearchResult, float, str]] = []
+    stats = ResolveStats()
+
+    stats.yt_calls += 1
     try:
         results = yt.search_songs(f"{entry.title} {entry.artist}", limit=search_limit)
     except YTMusicAPIError as exc:
-        return None, f"skipped (search error: {exc})", attempts
+        return None, f"skipped (search error: {exc})", attempts, stats
 
     for r in results:
         ok, score, reason = validate_match(entry.title, entry.artist, r)
         attempts.append((r, score, reason))
         if ok:
-            return r.video_id, f"matched (score {score:.2f})", attempts
+            stats.outcome = "heuristic"
+            return r.video_id, f"matched (score {score:.2f})", attempts, stats
 
     if llm is None:
         if not results:
-            return None, "skipped (no search results)", attempts
-        return None, "skipped (no acceptable match)", attempts
+            return None, "skipped (no search results)", attempts, stats
+        return None, "skipped (no acceptable match)", attempts, stats
 
     # Phase 1: re-rank the same candidates with the LLM (no YT call).
     if results:
+        stats.llm_calls += 1
         try:
             decision = llm.pick_match(entry, results)
             if decision.picked:
@@ -181,7 +202,8 @@ def _resolve_entry(
                     0.0,
                     f"llm-phase1-matched (confidence={decision.confidence or '?'})",
                 ))
-                return decision.picked.video_id, "matched (LLM phase 1)", attempts
+                stats.outcome = "llm-phase1"
+                return decision.picked.video_id, "matched (LLM phase 1)", attempts, stats
         except LLMError as exc:
             attempts.append((
                 SearchResult(video_id="", title="(LLM phase 1)", artists=[], kind="—"),
@@ -190,12 +212,13 @@ def _resolve_entry(
             ))
 
     # Phase 2: widened YT search (no kind filter) + LLM.
+    stats.yt_calls += 1
     try:
         wide_results = yt.search_any(
             f"{entry.title} {entry.artist}", limit=search_limit
         )
     except YTMusicAPIError as exc:
-        return None, f"skipped (LLM phase 2 search error: {exc})", attempts
+        return None, f"skipped (LLM phase 2 search error: {exc})", attempts, stats
 
     existing_ids = {r.video_id for r, _, _ in attempts if r.video_id}
     new_results = [r for r in wide_results if r.video_id not in existing_ids]
@@ -203,8 +226,9 @@ def _resolve_entry(
         attempts.append((r, 0.0, "llm-phase2-candidate"))
 
     if not new_results:
-        return None, "skipped (LLM phase 2 found nothing new)", attempts
+        return None, "skipped (LLM phase 2 found nothing new)", attempts, stats
 
+    stats.llm_calls += 1
     try:
         decision = llm.pick_match(entry, new_results)
         if decision.picked:
@@ -213,7 +237,8 @@ def _resolve_entry(
                 0.0,
                 f"llm-phase2-matched (confidence={decision.confidence or '?'})",
             ))
-            return decision.picked.video_id, "matched (LLM phase 2)", attempts
+            stats.outcome = "llm-phase2"
+            return decision.picked.video_id, "matched (LLM phase 2)", attempts, stats
     except LLMError as exc:
         attempts.append((
             SearchResult(video_id="", title="(LLM phase 2)", artists=[], kind="—"),
@@ -221,7 +246,7 @@ def _resolve_entry(
             f"llm-phase2-error: {exc}",
         ))
 
-    return None, "skipped (LLM no acceptable match)", attempts
+    return None, "skipped (LLM no acceptable match)", attempts, stats
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -282,10 +307,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     # Unmatched entries are omitted; this list is what we'll push to the playlist.
     desired_ids: list[str] = []
     skipped_count = 0
+    total_yt_calls = 0
+    total_llm_calls = 0
+    outcome_counts = {"heuristic": 0, "llm-phase1": 0, "llm-phase2": 0, "skipped": 0}
 
     for entry in billboard_entries:
         try:
-            video_id, status, attempts = _resolve_entry(
+            video_id, status, attempts, stats = _resolve_entry(
                 entry, yt, args.search_limit, llm=llm
             )
         except YTMusicAuthError as exc:
@@ -307,6 +335,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             desired_ids.append(video_id)
         else:
             skipped_count += 1
+        total_yt_calls += stats.yt_calls
+        total_llm_calls += stats.llm_calls
+        outcome_counts[stats.outcome] += 1
+
+    print("\nRun stats:")
+    print(f"  YT Music search calls: {total_yt_calls}")
+    print(f"  LLM calls:             {total_llm_calls}")
+    print(f"  Heuristic matches:     {outcome_counts['heuristic']}")
+    print(f"  LLM phase 1 matches:   {outcome_counts['llm-phase1']}")
+    print(f"  LLM phase 2 matches:   {outcome_counts['llm-phase2']}")
+    print(f"  Skipped:               {outcome_counts['skipped']}")
 
     sync_date_iso = date.today().isoformat()
     title = _build_title(chart_date)
@@ -325,7 +364,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         yt.clear_playlist(args.playlist_id)
         yt.add_playlist_items(args.playlist_id, desired_ids)
     except YTMusicAuthError as exc:
-        print(f"\nYouTube Music auth failed during playlist update: {exc}", file=sys.stderr)
+        print(f"\nYouTube Music auth f/Charailed during playlist update: {exc}", file=sys.stderr)
         return EXIT_AUTH_FAILURE
     except YTMusicAPIError as exc:
         print(f"\nPlaylist update failed: {exc}", file=sys.stderr)
