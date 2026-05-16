@@ -22,6 +22,18 @@ def _is_auth_error(exc: Exception) -> bool:
 
 
 def _parse_search_result(item: dict) -> Optional[SearchResult]:
+    """Convert one raw `ytmusicapi.YTMusic.search(...)` result dict into a `SearchResult`.
+
+    `item` is one element of the list returned by `ytmusicapi`'s search call. With
+    `filter="songs"` each item is shaped roughly like:
+        {"videoId": "rW2HmFDGdKs",
+         "title":   "Golden",
+         "artists": [{"name": "HUNTR/X", "id": "..."}, ...],
+         "resultType": "song",   # or "video"/"album"/"artist" if the filter leaks
+         "album": {...}, "duration": "3:21", ...}
+    We only care about the four fields above; everything else is dropped. Returns
+    None if `videoId` is missing (an unplayable entry — e.g. an album header row).
+    """
     video_id = item.get("videoId")
     if not video_id:
         return None

@@ -79,7 +79,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     try:
         html = fetch_billboard_html()
-        entries = parse_billboard_hot_100(html, args.top)
+        billboard_entries = parse_billboard_hot_100(html, args.top)
     except BillboardParseError as exc:
         print(
             f"Billboard parse failure (billboard_sync.billboard): {exc}",
@@ -102,10 +102,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Billboard Hot 100 — week of {chart_date}")
     print(f"Resolving top {args.top}…\n")
 
+    # YouTube Music videoIds for matched chart entries, in Billboard rank order.
+    # A videoId is the opaque 11-char string after `v=` in a YT Music URL — e.g.
+    # `rW2HmFDGdKs` from https://music.youtube.com/watch?v=rW2HmFDGdKs.
+    # Unmatched entries are omitted; this list is what we'll push to the playlist.
     desired_ids: list[str] = []
     skipped_count = 0
 
-    for entry in entries:
+    for entry in billboard_entries:
         try:
             video_id, status = _resolve_entry(entry, yt)
         except YTMusicAuthError as exc:

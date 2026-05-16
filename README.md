@@ -2,6 +2,8 @@
 
 Replace a YouTube Music playlist's contents with the current Billboard Hot 100 top N, in chart order. Songs not findable on YouTube Music are skipped silently.
 
+https://www.billboard.com/charts/hot-100/
+
 ## Install
 
 ```bash

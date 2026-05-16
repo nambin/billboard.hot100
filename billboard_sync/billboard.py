@@ -43,6 +43,12 @@ def fetch_billboard_html(timeout: int = 15, retries: int = 3) -> str:
 
 
 def parse_chart_date(html: str) -> Optional[str]:
+    """Extract the chart's issue date (YYYY-MM-DD) so the report can label the week.
+
+    Tries the `<time datetime="...">` element first; falls back to scanning anchor
+    hrefs for a `/YYYY-MM-DD/` segment (the prev/next-week links). Returns None if
+    neither is found — the caller substitutes today's date.
+    """
     soup = BeautifulSoup(html, "html.parser")
     t = soup.find("time")
     if t and t.get("datetime"):
