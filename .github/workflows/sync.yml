@@ -1,0 +1,106 @@
+name: Weekly Billboard Hot 100 Sync
+
+on:
+  schedule:
+    # Tue 19:00 UTC = Wed 04:00 KST (Korea Standard Time, UTC+9, no DST).
+    - cron: "0 19 * * 2"
+  workflow_dispatch:   # manual trigger from the Actions UI for testing
+
+concurrency:
+  # If a manual run is triggered while the cron run is in flight (or vice
+  # versa), queue rather than overlap — two simultaneous clear-and-rebuilds
+  # would race on the same playlist.
+  group: billboard-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # no write needed; the workflow only reads the repo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the package
+        run: pip install -e .
+
+      - name: Materialize browser.json from secret
+        env:
+          BROWSER_JSON: ${{ secrets.BROWSER_JSON }}
+        run: printf '%s' "$BROWSER_JSON" > browser.json
+
+      - name: Run sync
+        id: sync
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # `continue-on-error` keeps the email step alive even when the sync
+        # fails (cookie expiry, network blip, etc.) — the outcome is captured
+        # in steps.sync.outcome and surfaced in the subject line.
+        continue-on-error: true
+        run: billboard-to-ytmusic-sync -v 2>&1 | tee output.log
+
+      - name: Build email body
+        # Wrap the log in <pre> so column alignment survives Gmail's HTML
+        # renderer; html.escape protects against any stray <, >, & in the log
+        # being interpreted as markup. Heredoc into $GITHUB_ENV is the
+        # standard way to pass a multi-line value between steps.
+        run: |
+          {
+            echo "MAIL_BODY<<EOF_LOG"
+            echo "<pre style=\"font-family: monospace; white-space: pre-wrap;\">"
+            python -c "import html, sys; sys.stdout.write(html.escape(open('output.log').read()))"
+            echo "</pre>"
+            echo "EOF_LOG"
+          } >> "$GITHUB_ENV"
+
+      - name: Build email subject
+        # Mine the log for chart-week date and matched/total count so the
+        # inbox subject is informative at a glance. Falls back gracefully:
+        # if the sync failed before printing either, the subject just shows
+        # the outcome. Outcome is appended whenever != "success" so a
+        # partial-success-then-failure path is unambiguous.
+        run: |
+          python <<'PY' >> "$GITHUB_ENV"
+          import datetime, re
+          log = open("output.log", encoding="utf-8").read()
+          outcome = "${{ steps.sync.outcome }}"
+
+          def ord_suf(d):
+              if 10 <= d % 100 <= 20: return "th"
+              return {1: "st", 2: "nd", 3: "rd"}.get(d % 10, "th")
+
+          parts = ["Billboard sync"]
+          m_week = re.search(r"week of (\d{4}-\d{2}-\d{2})", log)
+          if m_week:
+              d = datetime.datetime.strptime(m_week.group(1), "%Y-%m-%d")
+              parts.append(f"{d.strftime('%B')} {d.day}{ord_suf(d.day)}, {d.year}")
+          m_count = re.search(r"(\d+) songs \((\d+) skipped\)", log)
+          if m_count:
+              matched, skipped = int(m_count.group(1)), int(m_count.group(2))
+              parts.append(f"{matched}/{matched + skipped} matched")
+          if outcome != "success":
+              parts.append(outcome)
+          if len(parts) == 1:
+              parts.append(outcome)
+          print(f"MAIL_SUBJECT={' — '.join(parts)}")
+          PY
+
+      - name: Email result
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: nambin.heo@gmail.com
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: nambin.heo@gmail.com
+          to: nambin.heo@gmail.com
+          subject: ${{ env.MAIL_SUBJECT }}
+          html_body: ${{ env.MAIL_BODY }}
+          attachments: output.log
