@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 import requests
@@ -42,25 +42,39 @@ def fetch_billboard_html(timeout: int = 15, retries: int = 3) -> str:
     raise BillboardParseError(f"Failed to fetch Billboard chart: {last_exc}")
 
 
+_WEEK_OF_RE = re.compile(r"Week of (\w+ \d{1,2}),? (\d{4})", re.IGNORECASE)
+_CHART_HREF_RE = re.compile(r"/charts/hot-100/(\d{4}-\d{2}-\d{2})/")
+
+
 def parse_chart_date(html: str) -> Optional[str]:
     """Extract the chart's issue date (YYYY-MM-DD) so the report can label the week.
 
-    Tries the `<time datetime="...">` element first; falls back to scanning anchor
-    hrefs for a `/YYYY-MM-DD/` segment (the prev/next-week links). Returns None if
-    neither is found — the caller substitutes today's date.
+    Primary: the human-readable "Week of <Month Day, Year>" header text. This is
+    the only signal that names the *current* chart's date unambiguously. The page
+    also has `<time>` elements but their `datetime` attrs are a Billboard template
+    placeholder ("00:00-YY-DD-MM") on the live page, so we don't trust them.
+
+    Fallback: dated hrefs, restricted to `/charts/hot-100/YYYY-MM-DD/` paths and
+    filtered to dates ≤ today, picking the most recent. The naive "first dated
+    href" used to land on a historical archive link buried in the page.
+
+    Returns None if no signal works — the caller substitutes today's date.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    t = soup.find("time")
-    if t and t.get("datetime"):
+    m = _WEEK_OF_RE.search(html)
+    if m:
         try:
-            return datetime.fromisoformat(t["datetime"].replace("Z", "+00:00")).strftime("%Y-%m-%d")
+            return datetime.strptime(f"{m.group(1)} {m.group(2)}", "%B %d %Y").strftime("%Y-%m-%d")
         except ValueError:
             pass
-    for a in soup.find_all("a", href=True):
-        m = re.search(r"/(\d{4}-\d{2}-\d{2})/", a["href"])
-        if m:
-            return m.group(1)
-    return None
+
+    today = date.today().isoformat()
+    soup = BeautifulSoup(html, "html.parser")
+    candidates = {
+        href_m.group(1)
+        for a in soup.find_all("a", href=True)
+        if (href_m := _CHART_HREF_RE.search(a["href"])) and href_m.group(1) <= today
+    }
+    return max(candidates) if candidates else None
 
 
 _BADGE_LABELS = {"NEW", "RE-ENTRY", "RE", "HOT SHOT DEBUT"}

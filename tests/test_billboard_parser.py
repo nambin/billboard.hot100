@@ -129,6 +129,48 @@ def test_parser_raises_on_too_few_entries():
         parse_billboard_hot_100(minimal_html, 30)
 
 
+def test_parse_chart_date_reads_week_of_header():
+    # Primary path: the human-visible "Week of <Month Day, Year>" header text.
+    html = '<html><body><h2>Billboard Hot 100 — Week of May 16, 2026</h2></body></html>'
+    assert parse_chart_date(html) == "2026-05-16"
+
+
+def test_parse_chart_date_ignores_garbage_time_and_archive_hrefs():
+    # Regression: the live Billboard page ships `<time datetime="00:00-YY-DD-MM">`
+    # (template placeholder, unparseable) and the FIRST dated href in DOM order is
+    # a historical archive link (e.g. /2025-11-01/), not the current chart. The
+    # parser must (a) ignore the garbage time, (b) prefer the "Week of …" header,
+    # and (c) if forced into the href fallback, pick the most recent non-future
+    # date instead of the first one encountered.
+    html = """
+    <html><body>
+      <time datetime="00:00-YY-DD-MM">5 hrs ago</time>
+      <a href="https://www.billboard.com/charts/hot-100/2025-11-01/">archive</a>
+      <a href="https://www.billboard.com/charts/hot-100/2026-02-14/">archive</a>
+      <h2>Week of May 16, 2026</h2>
+      <a href="https://www.billboard.com/charts/hot-100/2026-05-16/">this week</a>
+    </body></html>
+    """
+    assert parse_chart_date(html) == "2026-05-16"
+
+
+def test_parse_chart_date_href_fallback_picks_latest_non_future():
+    # When no "Week of" header is present, fall back to the most recent dated
+    # chart-hot-100 href that isn't in the future. Future dates and non-chart
+    # paths must be ignored.
+    from datetime import date, timedelta
+    future = (date.today() + timedelta(days=30)).isoformat()
+    html = f"""
+    <html><body>
+      <a href="/charts/hot-100/2025-11-01/">old</a>
+      <a href="/charts/hot-100/2026-05-09/">last week</a>
+      <a href="/charts/hot-100/{future}/">future pre-publish</a>
+      <a href="/news/2099-01-01/some-article">article path, ignored</a>
+    </body></html>
+    """
+    assert parse_chart_date(html) == "2026-05-09"
+
+
 def test_new_badge_is_skipped_and_whitespace_preserved():
     # Regression: Billboard puts a NEW debut-entry badge as a `.c-label` ahead of
     # the artist label, and renders artists like "X & Y" with the ampersand text

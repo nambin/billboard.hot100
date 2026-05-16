@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -49,6 +49,27 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 def _format_row(rank: int, title: str, artist: str, status: str) -> str:
     return f"{rank:>3}  {title[:28]:<28} {artist[:30]:<30} {status}"
+
+
+def _ordinal_suffix(day: int) -> str:
+    # 11th/12th/13th are exceptions to the 1st/2nd/3rd rule.
+    if 10 <= day % 100 <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _format_human_date(iso: str) -> str:
+    """'2026-05-09' → 'May 9th, 2026'."""
+    d = datetime.strptime(iso, "%Y-%m-%d").date()
+    return f"{d.strftime('%B')} {d.day}{_ordinal_suffix(d.day)}, {d.year}"
+
+
+def _build_description(chart_date_iso: str, top_n: int, sync_date_iso: str) -> str:
+    return (
+        f"Billboard Hot 100 top {top_n}.\n"
+        f"Chart week of {_format_human_date(chart_date_iso)}.\n"
+        f"Synced {_format_human_date(sync_date_iso)}."
+    )
 
 
 def _resolve_entry(entry: ChartEntry, yt: YTMusicClient) -> tuple[Optional[str], str]:
@@ -126,8 +147,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         else:
             skipped_count += 1
 
+    sync_date_iso = date.today().isoformat()
+    description = _build_description(chart_date, args.top, sync_date_iso)
+
     if args.dry_run:
-        print(f"\nPlaylist update: DRY RUN — no changes made.")
+        print(
+            f"\nPlaylist update: DRY RUN — would refresh with "
+            f"{len(desired_ids)} songs ({skipped_count} skipped). No changes made."
+        )
+        print(f'Description: DRY RUN — would set "{description}"')
         return EXIT_OK
 
     try:
@@ -141,6 +169,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         return EXIT_API_FAILURE
 
     print(f"\nPlaylist refreshed: {len(desired_ids)} songs ({skipped_count} skipped).")
+
+    # Best-effort description stamp — playlist tracks are already correct, so a
+    # failure here is logged and does not change the exit code.
+    try:
+        yt.set_description(args.playlist_id, description)
+        print(f"Description updated: {description}")
+    except YTMusicAuthError as exc:
+        print(f"Description update skipped — auth failed: {exc}", file=sys.stderr)
+    except YTMusicAPIError as exc:
+        print(f"Description update skipped — API error: {exc}", file=sys.stderr)
+
     return EXIT_OK
 
 
