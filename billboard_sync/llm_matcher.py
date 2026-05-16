@@ -1,6 +1,6 @@
 """LLM-based fallback for the heuristic matcher.
 
-See ../llm-retry-prompt.md for design notes.
+See ../prompt-llm-retry.md for design notes.
 
 This module is intentionally pure-Python with the Gemini client injected. The
 prompt builder and response parser are stand-alone functions so tests can drive

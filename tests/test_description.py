@@ -31,10 +31,9 @@ def test_format_human_date():
 
 
 def test_build_description():
-    assert _build_description("2026-05-09", 30, "2026-05-19") == (
-        "Billboard Hot 100 (Top 30). "
-        "Chart week of May 9th, 2026. "
-        "Updated May 19th, 2026."
+    assert _build_description("2026-05-09", 30) == (
+        "Top 30, week of May 9th, 2026.\n"
+        "https://www.billboard.com/charts/hot-100/"
     )
 
 

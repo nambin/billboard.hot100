@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -116,11 +116,10 @@ def _format_human_date(iso: str) -> str:
     return f"{d.strftime('%B')} {d.day}{_ordinal_suffix(d.day)}, {d.year}"
 
 
-def _build_description(chart_date_iso: str, top_n: int, sync_date_iso: str) -> str:
+def _build_description(chart_date_iso: str, top_n: int) -> str:
     return (
-        f"Billboard Hot 100 (Top {top_n}). "
-        f"Chart week of {_format_human_date(chart_date_iso)}. "
-        f"Updated {_format_human_date(sync_date_iso)}."
+        f"Top {top_n}, week of {_format_human_date(chart_date_iso)}.\n"
+        f"https://www.billboard.com/charts/hot-100/"
     )
 
 
@@ -347,9 +346,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  LLM phase 2 matches:   {outcome_counts['llm-phase2']}")
     print(f"  Skipped:               {outcome_counts['skipped']}")
 
-    sync_date_iso = date.today().isoformat()
     title = _build_title(chart_date)
-    description = _build_description(chart_date, args.top, sync_date_iso)
+    description = _build_description(chart_date, args.top)
 
     if args.dry_run:
         print(

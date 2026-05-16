@@ -47,7 +47,7 @@ When the heuristic matcher can't find an acceptable YT Music track, the binary f
 1. **Re-rank** the same candidates the heuristic already saw (no extra YT call).
 2. If phase 1 declines, do **one** widened YT search (no `filter="songs"`) and let Gemini pick from those.
 
-Default is on — pass `--no-llm` to skip the rescue. Requires `GEMINI_API_KEY` set in the environment; get one at <https://aistudio.google.com/app/apikey>. Free tier easily covers a weekly run. The model (`gemini-flash-lite-latest`) is hard-coded in [billboard_sync/llm_matcher.py](billboard_sync/llm_matcher.py); edit `DEFAULT_MODEL` there to change it. See [llm-retry-prompt.md](llm-retry-prompt.md) for the design.
+Default is on — pass `--no-llm` to skip the rescue. Requires `GEMINI_API_KEY` set in the environment; get one at <https://aistudio.google.com/app/apikey>. Free tier easily covers a weekly run. The model (`gemini-flash-lite-latest`) is hard-coded in [billboard_sync/llm_matcher.py](billboard_sync/llm_matcher.py); edit `DEFAULT_MODEL` there to change it. See [prompt-llm-retry.md](prompt-llm-retry.md) for the design.
 
 ### Setting `GEMINI_API_KEY`
 
@@ -90,7 +90,8 @@ Run stats:
 
 Playlist refreshed: 29 songs (1 skipped).
 Title updated:       Billboard Hot 100 (May 16th, 2026)
-Description updated: Billboard Hot 100 (Top 30). Chart week of May 16th, 2026. Updated May 16th, 2026.
+Description updated: Top 30, week of May 16th, 2026.
+https://www.billboard.com/charts/hot-100/
 ```
 
 Use `-v` / `--verbose` to print every YT Music candidate the matcher (and LLM) examined per chart entry, with the reason each was accepted or rejected. `--dry-run` prints the same report but ends with `Playlist update: DRY RUN — would refresh with N songs (M skipped). No changes made.` and makes no playlist edits.
