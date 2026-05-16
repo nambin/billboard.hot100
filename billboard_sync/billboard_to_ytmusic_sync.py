@@ -13,7 +13,7 @@ from billboard_sync.billboard import (
     parse_billboard_hot_100,
     parse_chart_date,
 )
-from billboard_sync.matcher import validate_match
+from billboard_sync.matcher import SearchResult, validate_match
 from billboard_sync.ytmusic import (
     YTMusicAPIError,
     YTMusicAuthError,
@@ -43,7 +43,21 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="Path to YouTube Music auth file (browser.json).",
     )
     p.add_argument("--top", type=int, default=30, help="Chart positions to sync (1-100, default 30).")
+    p.add_argument(
+        "--search-limit",
+        type=int,
+        default=5,
+        help="How many YT Music results to examine per chart entry before giving up "
+             "(1-20, default 5). Higher = more chances to find a valid match, but "
+             "more noise to wade through and slower runs.",
+    )
     p.add_argument("--dry-run", action="store_true", help="Resolve and report only; no playlist edits.")
+    p.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="For each chart entry, print every YT Music candidate examined with its "
+             "title/artists/kind and the reason it was accepted or rejected.",
+    )
     return p.parse_args(argv)
 
 
@@ -72,18 +86,37 @@ def _build_description(chart_date_iso: str, top_n: int, sync_date_iso: str) -> s
     )
 
 
-def _resolve_entry(entry: ChartEntry, yt: YTMusicClient) -> tuple[Optional[str], str]:
+def _format_candidate(r: SearchResult, score: float, reason: str) -> str:
+    artists = ", ".join(a for a in r.artists if a) if r.artists else "(no artists)"
+    return f'       - "{r.title}" by {artists} [{r.kind or "?"}] (score {score:.2f}) — {reason}'
+
+
+def _resolve_entry(
+    entry: ChartEntry, yt: YTMusicClient, search_limit: int = 5
+) -> tuple[Optional[str], str, list[tuple[SearchResult, float, str]]]:
+    """Search YT Music for the entry and return (video_id, status, attempts).
+
+    `attempts` lists every candidate examined as (result, score_0_to_1, reason)
+    — useful for verbose logging. Empty if the search errored or returned no
+    results. On a match, we short-circuit, so `attempts` ends at the picked
+    candidate (any earlier-rejected ones are included before it).
+    """
     try:
-        results = yt.search_songs(f"{entry.title} {entry.artist}", limit=5)
+        results = yt.search_songs(f"{entry.title} {entry.artist}", limit=search_limit)
     except YTMusicAPIError as exc:
-        return None, f"skipped (search error: {exc})"
+        return None, f"skipped (search error: {exc})", []
 
+    if not results:
+        return None, "skipped (no search results)", []
+
+    attempts: list[tuple[SearchResult, float, str]] = []
     for r in results:
-        ok, score = validate_match(entry.title, entry.artist, r)
+        ok, score, reason = validate_match(entry.title, entry.artist, r)
+        attempts.append((r, score, reason))
         if ok:
-            return r.video_id, f"matched (score {score:.2f})"
+            return r.video_id, f"matched (score {score:.2f})", attempts
 
-    return None, "skipped (no acceptable match)"
+    return None, "skipped (no acceptable match)", attempts
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -91,6 +124,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if not 1 <= args.top <= 100:
         print(f"--top must be in 1..100 (got {args.top})", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+    if not 1 <= args.search_limit <= 20:
+        print(f"--search-limit must be in 1..20 (got {args.search_limit})", file=sys.stderr)
         return EXIT_USER_ERROR
 
     auth_path = Path(args.auth_file)
@@ -132,7 +169,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for entry in billboard_entries:
         try:
-            video_id, status = _resolve_entry(entry, yt)
+            video_id, status, attempts = _resolve_entry(entry, yt, args.search_limit)
         except YTMusicAuthError as exc:
             print(
                 f"\nYouTube Music auth failed mid-run: {exc}\n"
@@ -142,6 +179,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             return EXIT_AUTH_FAILURE
         marker = "✓" if video_id else "✗"
         print(_format_row(entry.rank, entry.title, entry.artist, f"{marker} {status}"))
+        if args.verbose:
+            if not attempts:
+                print("       (no candidates from search)")
+            for r, score, reason in attempts:
+                print(_format_candidate(r, score, reason))
+            print()
         if video_id:
             desired_ids.append(video_id)
         else:

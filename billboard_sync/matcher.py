@@ -52,19 +52,24 @@ def validate_match(
     billboard_title: str,
     billboard_artist: str,
     result: SearchResult,
-) -> tuple[bool, float]:
+) -> tuple[bool, float, str]:
+    """Return (ok, score_0_to_1, reason).
+
+    `reason` is a short tag for verbose logging: "matched", "kind=<kind>",
+    "title-low (<score>)", "no-primary-artist", or "artist-mismatch (...)".
+    """
     if result.kind != "song":
-        return False, 0.0
+        return False, 0.0, f"kind={result.kind or 'unknown'}"
 
     score = _title_score(billboard_title, result.title)
     if score < TITLE_RATIO_THRESHOLD:
-        return False, score / 100.0
+        return False, score / 100.0, f"title-low ({score / 100.0:.2f})"
 
     primary = primary_artist(billboard_artist).lower()
     if not primary:
-        return False, score / 100.0
+        return False, score / 100.0, "no-primary-artist"
 
     if not any(primary in (name or "").lower() for name in result.artists):
-        return False, score / 100.0
+        return False, score / 100.0, f"artist-mismatch (primary={primary!r})"
 
-    return True, score / 100.0
+    return True, score / 100.0, "matched"
