@@ -39,8 +39,6 @@ Flags:
 | `--dry-run`      | off                          | Resolve and print the report; no playlist edits.       |
 | `-v` / `--verbose` | off                        | Per-entry candidate list with match reasons.           |
 | `--llm` / `--no-llm` | **on**                   | Two-phase Gemini rescue for heuristic skips. Needs `GEMINI_API_KEY`. |
-| `--llm-model`    | `gemini-flash-lite-latest`   | Override the Gemini model. The `-latest` alias rolls forward as Google ships new flash-lite versions. |
-| `--llm-api-key`  | (unset)                      | Override the API key inline. Falls back to `GEMINI_API_KEY` env var. Prefer the env var — CLI flags leak into shell history. |
 
 ## LLM rescue
 
@@ -49,7 +47,7 @@ When the heuristic matcher can't find an acceptable YT Music track, the binary f
 1. **Re-rank** the same candidates the heuristic already saw (no extra YT call).
 2. If phase 1 declines, do **one** widened YT search (no `filter="songs"`) and let Gemini pick from those.
 
-Default is on — pass `--no-llm` to skip the rescue. Requires `GEMINI_API_KEY` set in the environment; get one at <https://aistudio.google.com/app/apikey>. Free tier easily covers a weekly run. See [llm-retry-prompt.md](llm-retry-prompt.md) for the design.
+Default is on — pass `--no-llm` to skip the rescue. Requires `GEMINI_API_KEY` set in the environment; get one at <https://aistudio.google.com/app/apikey>. Free tier easily covers a weekly run. The model (`gemini-flash-lite-latest`) is hard-coded in [billboard_sync/llm_matcher.py](billboard_sync/llm_matcher.py); edit `DEFAULT_MODEL` there to change it. See [llm-retry-prompt.md](llm-retry-prompt.md) for the design.
 
 ### Setting `GEMINI_API_KEY`
 
@@ -66,7 +64,6 @@ billboard-to-ytmusic-sync --dry-run -v
 Alternatives:
 - `$env:GEMINI_API_KEY = "..."` for one shell session.
 - `[Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "...", "User")` to persist for your user across all future shells.
-- `--llm-api-key "..."` as a one-off CLI flag (visible in shell history and process listings — prefer the others).
 
 ## Example output
 

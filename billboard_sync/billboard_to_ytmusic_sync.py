@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -12,6 +13,11 @@ from billboard_sync.billboard import (
     fetch_billboard_html,
     parse_billboard_hot_100,
     parse_chart_date,
+)
+from billboard_sync.llm_matcher import (
+    LLMError,
+    LLMMatcher,
+    build_default_matcher,
 )
 from billboard_sync.matcher import SearchResult, validate_match
 from billboard_sync.ytmusic import (
@@ -25,6 +31,28 @@ EXIT_USER_ERROR = 1
 EXIT_PARSE_FAILURE = 2
 EXIT_AUTH_FAILURE = 3
 EXIT_API_FAILURE = 4
+
+
+def _load_dotenv(path: Path = Path(".env")) -> None:
+    """Populate `os.environ` from `KEY=VALUE` lines in `.env`, if present.
+
+    Existing env vars always win — so a one-off `$env:VAR =` or a value set in
+    the parent shell overrides what's in the file. Lines starting with `#` and
+    blank lines are skipped. Surrounding single/double quotes on the value are
+    stripped. Malformed lines are silently ignored — this is a convenience
+    loader, not a config parser.
+    """
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -57,6 +85,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="For each chart entry, print every YT Music candidate examined with its "
              "title/artists/kind and the reason it was accepted or rejected.",
+    )
+    p.add_argument(
+        "--llm",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Two-phase Gemini rescue for entries the heuristic matcher skips. "
+             "Phase 1 re-ranks the same candidates; phase 2 widens the YT search "
+             "to include videos. Default: enabled. Requires GEMINI_API_KEY in env. "
+             "Pass --no-llm to disable.",
     )
     return p.parse_args(argv)
 
@@ -92,34 +129,97 @@ def _format_candidate(r: SearchResult, score: float, reason: str) -> str:
 
 
 def _resolve_entry(
-    entry: ChartEntry, yt: YTMusicClient, search_limit: int = 5
+    entry: ChartEntry,
+    yt: YTMusicClient,
+    search_limit: int = 5,
+    llm: Optional[LLMMatcher] = None,
 ) -> tuple[Optional[str], str, list[tuple[SearchResult, float, str]]]:
     """Search YT Music for the entry and return (video_id, status, attempts).
 
-    `attempts` lists every candidate examined as (result, score_0_to_1, reason)
-    — useful for verbose logging. Empty if the search errored or returned no
-    results. On a match, we short-circuit, so `attempts` ends at the picked
-    candidate (any earlier-rejected ones are included before it).
+    `attempts` lists every candidate examined as (result, score_0_to_1, reason).
+    Reason values include heuristic verdicts ("matched", "kind=...",
+    "title-low (...)", "artist-mismatch (...)") and LLM-rescue tags
+    ("llm-phase1-matched", "llm-phase2-candidate", "llm-phase2-matched").
+
+    Flow:
+    1. `search_songs` + heuristic validate. Short-circuits on first match.
+    2. If `llm` is set and heuristic skipped: LLM phase 1 re-ranks the same
+       candidates (no extra YT search).
+    3. If LLM phase 1 declines: one widened `search_any` call, LLM phase 2 picks
+       from the new (possibly video-kind) candidates.
     """
+    attempts: list[tuple[SearchResult, float, str]] = []
     try:
         results = yt.search_songs(f"{entry.title} {entry.artist}", limit=search_limit)
     except YTMusicAPIError as exc:
-        return None, f"skipped (search error: {exc})", []
+        return None, f"skipped (search error: {exc})", attempts
 
-    if not results:
-        return None, "skipped (no search results)", []
-
-    attempts: list[tuple[SearchResult, float, str]] = []
     for r in results:
         ok, score, reason = validate_match(entry.title, entry.artist, r)
         attempts.append((r, score, reason))
         if ok:
             return r.video_id, f"matched (score {score:.2f})", attempts
 
-    return None, "skipped (no acceptable match)", attempts
+    if llm is None:
+        if not results:
+            return None, "skipped (no search results)", attempts
+        return None, "skipped (no acceptable match)", attempts
+
+    # Phase 1: re-rank the same candidates with the LLM (no YT call).
+    if results:
+        try:
+            decision = llm.pick_match(entry, results)
+            if decision.picked:
+                attempts.append((
+                    decision.picked,
+                    0.0,
+                    f"llm-phase1-matched (confidence={decision.confidence or '?'})",
+                ))
+                return decision.picked.video_id, "matched (LLM phase 1)", attempts
+        except LLMError as exc:
+            attempts.append((
+                SearchResult(video_id="", title="(LLM phase 1)", artists=[], kind="—"),
+                0.0,
+                f"llm-phase1-error: {exc}",
+            ))
+
+    # Phase 2: widened YT search (no kind filter) + LLM.
+    try:
+        wide_results = yt.search_any(
+            f"{entry.title} {entry.artist}", limit=search_limit
+        )
+    except YTMusicAPIError as exc:
+        return None, f"skipped (LLM phase 2 search error: {exc})", attempts
+
+    existing_ids = {r.video_id for r, _, _ in attempts if r.video_id}
+    new_results = [r for r in wide_results if r.video_id not in existing_ids]
+    for r in new_results:
+        attempts.append((r, 0.0, "llm-phase2-candidate"))
+
+    if not new_results:
+        return None, "skipped (LLM phase 2 found nothing new)", attempts
+
+    try:
+        decision = llm.pick_match(entry, new_results)
+        if decision.picked:
+            attempts.append((
+                decision.picked,
+                0.0,
+                f"llm-phase2-matched (confidence={decision.confidence or '?'})",
+            ))
+            return decision.picked.video_id, "matched (LLM phase 2)", attempts
+    except LLMError as exc:
+        attempts.append((
+            SearchResult(video_id="", title="(LLM phase 2)", artists=[], kind="—"),
+            0.0,
+            f"llm-phase2-error: {exc}",
+        ))
+
+    return None, "skipped (LLM no acceptable match)", attempts
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    _load_dotenv()
     args = parse_args(argv)
 
     if not 1 <= args.top <= 100:
@@ -134,6 +234,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not auth_path.exists():
         print(f"--auth-file not found: {auth_path}", file=sys.stderr)
         return EXIT_USER_ERROR
+
+    # Build the LLM rescue matcher up-front so a missing GEMINI_API_KEY fails fast
+    # *before* any expensive Billboard/YT calls. Pass --no-llm to skip the rescue.
+    llm: Optional[LLMMatcher] = None
+    if args.llm:
+        try:
+            llm = build_default_matcher()
+        except LLMError as exc:
+            print(f"LLM rescue init failed: {exc}", file=sys.stderr)
+            return EXIT_USER_ERROR
 
     try:
         html = fetch_billboard_html()
@@ -169,7 +279,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for entry in billboard_entries:
         try:
-            video_id, status, attempts = _resolve_entry(entry, yt, args.search_limit)
+            video_id, status, attempts = _resolve_entry(
+                entry, yt, args.search_limit, llm=llm
+            )
         except YTMusicAuthError as exc:
             print(
                 f"\nYouTube Music auth failed mid-run: {exc}\n"

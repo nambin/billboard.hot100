@@ -36,7 +36,7 @@ At most **two** LLM calls per skipped chart entry (Phase 1 and Phase 2). No furt
 ## Provider: Google Gemini
 
 - **SDK:** `google-genai` (the unified Python SDK; replaces the older `google-generativeai`).
-- **Model:** `gemini-2.5-flash-lite` by default (cheap, fast, JSON-structured-output capable). Overridable via `--llm-model`.
+- **Model:** `gemini-flash-lite-latest` (cheap, fast, JSON-structured-output capable; the `-latest` alias rolls forward as Google ships new flash-lite versions). Hard-coded as `DEFAULT_MODEL` in `billboard_sync/llm_matcher.py`; edit the constant to change.
 - **Auth:** `GEMINI_API_KEY` environment variable. The SDK's `genai.Client()` constructor reads it automatically.
 - **Endpoint:** Google AI Studio (not Vertex AI) — the personal-use free-tier path.
 - **JSON output:** request via `config={"response_mime_type": "application/json", "response_schema": ...}`.
@@ -111,7 +111,8 @@ The matcher accepts the result only if `video_id` matches one of the candidate v
 | Flag | Default | Meaning |
 | ---- | ------- | ------- |
 | `--llm` / `--no-llm` | on | Enable/disable the two-phase LLM rescue. Default on. |
-| `--llm-model` | `gemini-2.5-flash-lite` | Override the Gemini model. |
+
+Model and API-key overrides are intentionally not CLI flags — the model is a one-line edit in `billboard_sync/llm_matcher.py` (changes infrequently), and the API key belongs in `.env` or the environment (CLI flags would leak it into shell history and process listings).
 
 ### Env vars
 

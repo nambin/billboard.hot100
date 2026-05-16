@@ -56,10 +56,21 @@ class YTMusicClient:
             raise YTMusicAuthError(str(exc)) from exc
 
     def search_songs(self, query: str, limit: int = 5) -> list[SearchResult]:
+        return self._search(query, filter="songs", limit=limit)
+
+    def search_any(self, query: str, limit: int = 5) -> list[SearchResult]:
+        """Search without the kind filter so results may include videos/albums.
+
+        Used by the LLM phase-2 rescue, which needs to consider video-only
+        listings for songs YT Music hasn't yet indexed as a "song" entry.
+        """
+        return self._search(query, filter=None, limit=limit)
+
+    def _search(self, query: str, filter: Optional[str], limit: int) -> list[SearchResult]:
         last_exc: Optional[Exception] = None
         for attempt in range(3):
             try:
-                raw = self._yt.search(query, filter="songs", limit=limit)
+                raw = self._yt.search(query, filter=filter, limit=limit)
                 results: list[SearchResult] = []
                 for item in raw[:limit]:
                     parsed = _parse_search_result(item)
