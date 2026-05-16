@@ -117,10 +117,16 @@ def _format_human_date(iso: str) -> str:
 
 def _build_description(chart_date_iso: str, top_n: int, sync_date_iso: str) -> str:
     return (
-        f"Billboard Hot 100 top {top_n}.\n"
-        f"Chart week of {_format_human_date(chart_date_iso)}.\n"
-        f"Synced {_format_human_date(sync_date_iso)}."
+        f"Billboard Hot 100 (Top {top_n}). "
+        f"Chart week of {_format_human_date(chart_date_iso)}. "
+        f"Updated {_format_human_date(sync_date_iso)}."
     )
+
+
+def _build_title(chart_date_iso: str) -> str:
+    """e.g. 'Billboard Hot 100 (May 16th, 2026)'. Uses the chart-week date, not
+    the sync date — the title identifies which chart the playlist represents."""
+    return f"Billboard Hot 100 ({_format_human_date(chart_date_iso)})"
 
 
 def _format_candidate(r: SearchResult, score: float, reason: str) -> str:
@@ -303,6 +309,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             skipped_count += 1
 
     sync_date_iso = date.today().isoformat()
+    title = _build_title(chart_date)
     description = _build_description(chart_date, args.top, sync_date_iso)
 
     if args.dry_run:
@@ -310,6 +317,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"\nPlaylist update: DRY RUN — would refresh with "
             f"{len(desired_ids)} songs ({skipped_count} skipped). No changes made."
         )
+        print(f'Title:       DRY RUN — would set "{title}"')
         print(f'Description: DRY RUN — would set "{description}"')
         return EXIT_OK
 
@@ -325,15 +333,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     print(f"\nPlaylist refreshed: {len(desired_ids)} songs ({skipped_count} skipped).")
 
-    # Best-effort description stamp — playlist tracks are already correct, so a
+    # Best-effort metadata stamp — playlist tracks are already correct, so a
     # failure here is logged and does not change the exit code.
     try:
-        yt.set_description(args.playlist_id, description)
+        yt.set_metadata(args.playlist_id, title=title, description=description)
+        print(f"Title updated:       {title}")
         print(f"Description updated: {description}")
     except YTMusicAuthError as exc:
-        print(f"Description update skipped — auth failed: {exc}", file=sys.stderr)
+        print(f"Metadata update skipped — auth failed: {exc}", file=sys.stderr)
     except YTMusicAPIError as exc:
-        print(f"Description update skipped — API error: {exc}", file=sys.stderr)
+        print(f"Metadata update skipped — API error: {exc}", file=sys.stderr)
 
     return EXIT_OK
 

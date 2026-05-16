@@ -119,9 +119,10 @@ class YTMusicClient:
                 raise YTMusicAuthError(str(exc)) from exc
             raise YTMusicAPIError(f"add_playlist_items failed: {exc}") from exc
 
-    def set_description(self, playlist_id: str, description: str) -> None:
+    def set_metadata(self, playlist_id: str, *, title: str, description: str) -> None:
+        """Update the playlist's title and description in one API call."""
         try:
-            self._yt.edit_playlist(playlist_id, description=description)
+            self._yt.edit_playlist(playlist_id, title=title, description=description)
         except Exception as exc:
             if _is_auth_error(exc):
                 raise YTMusicAuthError(str(exc)) from exc

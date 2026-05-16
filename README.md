@@ -81,9 +81,8 @@ Resolving top 30…
  18  Some Obscure Track           Some Artist                    ✗ skipped (LLM no acceptable match)
 
 Playlist refreshed: 29 songs (1 skipped).
-Description updated: Billboard Hot 100 top 30.
-Chart week of May 16th, 2026.
-Synced May 16th, 2026.
+Title updated:       Billboard Hot 100 (May 16th, 2026)
+Description updated: Billboard Hot 100 (Top 30). Chart week of May 16th, 2026. Updated May 16th, 2026.
 ```
 
 Use `-v` / `--verbose` to print every YT Music candidate the matcher (and LLM) examined per chart entry, with the reason each was accepted or rejected. `--dry-run` prints the same report but ends with `Playlist update: DRY RUN — would refresh with N songs (M skipped). No changes made.` and makes no playlist edits.

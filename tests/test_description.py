@@ -1,5 +1,6 @@
 from billboard_sync.billboard_to_ytmusic_sync import (
     _build_description,
+    _build_title,
     _format_human_date,
     _ordinal_suffix,
 )
@@ -31,7 +32,13 @@ def test_format_human_date():
 
 def test_build_description():
     assert _build_description("2026-05-09", 30, "2026-05-19") == (
-        "Billboard Hot 100 top 30.\n"
-        "Chart week of May 9th, 2026.\n"
-        "Synced May 19th, 2026."
+        "Billboard Hot 100 (Top 30). "
+        "Chart week of May 9th, 2026. "
+        "Updated May 19th, 2026."
     )
+
+
+def test_build_title():
+    assert _build_title("2026-05-16") == "Billboard Hot 100 (May 16th, 2026)"
+    assert _build_title("2026-05-09") == "Billboard Hot 100 (May 9th, 2026)"
+    assert _build_title("2026-12-01") == "Billboard Hot 100 (December 1st, 2026)"
