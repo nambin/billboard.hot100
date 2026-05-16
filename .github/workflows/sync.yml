@@ -2,8 +2,10 @@ name: Weekly Billboard Hot 100 Sync
 
 on:
   schedule:
-    # Tue 19:00 UTC = Wed 04:00 KST (Korea Standard Time, UTC+9, no DST).
-    - cron: "0 19 * * 2"
+    # Every Wednesday at 04:00 Korea Standard Time.
+    # Billboard Hot 100 Chart updates at its usual time of 10:00 AM Eastern Time (ET) on Tuesday.
+    - cron: "0 4 * * 3"
+      timezone: "Asia/Seoul"
   workflow_dispatch:   # manual trigger from the Actions UI for testing
 
 concurrency:
