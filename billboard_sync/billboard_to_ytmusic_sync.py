@@ -362,7 +362,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         yt.clear_playlist(args.playlist_id)
         yt.add_playlist_items(args.playlist_id, desired_ids)
     except YTMusicAuthError as exc:
-        print(f"\nYouTube Music auth f/Charailed during playlist update: {exc}", file=sys.stderr)
+        print(f"\nYouTube Music auth failed during playlist update: {exc}", file=sys.stderr)
         return EXIT_AUTH_FAILURE
     except YTMusicAPIError as exc:
         print(f"\nPlaylist update failed: {exc}", file=sys.stderr)

@@ -4,6 +4,8 @@ Replace a YouTube Music playlist's contents with the current Billboard Hot 100 t
 
 https://www.billboard.com/charts/hot-100/
 
+Top 30 songs are regularly deplyed to this public [Youtube Music Playlist](https://music.youtube.com/playlist?list=PL2qJd7QV51AbSavNCq9E4tmJY3cDYHBbY) via GitHub Action. 
+
 ## Install
 
 ```bash
