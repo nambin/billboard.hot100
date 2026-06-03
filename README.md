@@ -16,9 +16,23 @@ Requires Python ≥ 3.11.
 
 ## Auth file
 
-The tool needs a `browser.json` containing your YouTube Music session cookies for `ytmusicapi` to act on your behalf. Generate it once and pass its path via `--auth-file` (or place it at `./browser.json` to use the default). Browser cookies eventually expire (months, typically) — when they do, regenerate the file.
+The tool needs a `browser.json` containing your YouTube Music session cookies for `ytmusicapi` to act on your behalf. Generate it once and pass its path via `--auth-file` (or place it at `./browser.json` to use the default). Browser cookies eventually expire — when they do, every authenticated write fails with HTTP 401 and the tool exits with code 3. Regenerate the file to fix it.
 
-> _Generation method TBD._
+### Generating `browser.json`
+
+`ytmusicapi`'s setup tool builds the file from the request headers of a logged-in YouTube Music session:
+
+1. Open <https://music.youtube.com> in your browser, signed in to the account you want to sync.
+2. Open DevTools (F12) → **Network** tab, filter for `browse`.
+3. Click any **POST** request to `youtubei/v1/browse`.
+4. Copy that request's headers. Right-click → **Copy → Copy as fetch**, paste into a text editor, and pull out just the headers object.
+5. Verify it's authenticated — you should see your account name, not a "Get Music Premium" menu:
+
+   ```bash
+   python -c "from ytmusicapi import YTMusic; print(YTMusic('browser.json').get_account_info())"
+   ```
+
+`browser.json` is gitignored. Don't commit it.
 
 ## Usage
 

@@ -43,9 +43,15 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         # `continue-on-error` keeps the email step alive even when the sync
         # fails (cookie expiry, network blip, etc.) — the outcome is captured
-        # in steps.sync.outcome and surfaced in the subject line.
+        # in steps.sync.outcome, surfaced in the subject line, and re-asserted
+        # as a job failure in the final step below.
         continue-on-error: true
-        run: billboard-to-ytmusic-sync -v 2>&1 | tee output.log
+        # `set -o pipefail` so the binary's exit code (e.g. 3 on auth failure)
+        # propagates through `tee` instead of being masked by tee's exit 0.
+        shell: bash
+        run: |
+          set -o pipefail
+          billboard-to-ytmusic-sync -v 2>&1 | tee output.log
 
       - name: Build email body
         # Wrap the log in <pre> so column alignment survives Gmail's HTML
@@ -106,3 +112,13 @@ jobs:
           subject: ${{ env.MAIL_SUBJECT }}
           html_body: ${{ env.MAIL_BODY }}
           attachments: output.log
+
+      - name: Fail the job if the sync failed
+        # The sync step swallows its own failure (continue-on-error) so the
+        # email above always sends. Re-assert that failure here so the run
+        # shows red in the Actions UI and the cron is visibly broken — exit
+        # code 3 (auth/cookie expiry) and any other non-success land here.
+        if: steps.sync.outcome != 'success'
+        run: |
+          echo "Sync step did not succeed (outcome: ${{ steps.sync.outcome }})." >&2
+          exit 1
