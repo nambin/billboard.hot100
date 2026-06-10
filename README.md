@@ -25,7 +25,7 @@ The tool needs a `browser.json` containing your YouTube Music session cookies fo
 1. Open <https://music.youtube.com> in your browser, signed in to the account you want to sync.
 2. Open DevTools (F12) → **Network** tab, filter for `browse`.
 3. Click any **POST** request to `youtubei/v1/browse`.
-4. Copy that request's headers. Right-click → **Copy → Copy as fetch**, paste into a text editor, and pull out just the headers object.
+4. Copy that request's headers. Right-click → **Copy → Copy as fetch (Node.js)**, paste into a text editor, and pull out just the headers object.
 5. Verify it's authenticated — you should see your account name, not a "Get Music Premium" menu:
 
    ```bash
