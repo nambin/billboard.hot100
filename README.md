@@ -16,7 +16,9 @@ Requires Python ≥ 3.11.
 
 ## Auth file
 
-The tool needs a `browser.json` containing your YouTube Music session cookies for `ytmusicapi` to act on your behalf. Generate it once and pass its path via `--auth-file` (or place it at `./browser.json` to use the default). Browser cookies eventually expire — when they do, every authenticated write fails with HTTP 401 and the tool exits with code 3. Regenerate the file to fix it.
+The tool needs a `browser.json` containing your YouTube Music session cookies for `ytmusicapi` to act on your behalf. Generate it once (see below) and pass its path via `--auth-file` (or place it at `./browser.json` to use the default). Browser cookies eventually expire — when they do, every authenticated write fails with HTTP 401 and the tool exits code 3. Regenerate the file to fix it.
+
+> **Why not OAuth?** OAuth would be the natural way to avoid the periodic re-copy, and the tool _does_ auto-detect an `oauth.json` (a file with a top-level `refresh_token`) and pass `OAuthCredentials` when one is present. But as of `ytmusicapi` 1.12.0 (July 2026), OAuth is effectively broken for YouTube Music: a token from a "TV and Limited Input devices" client is only accepted by the InnerTube API under the `TVHTML5` client context, while `ytmusicapi` hardcodes `WEB_REMIX`, so every call returns `HTTP 400 invalid argument` (see [ytmusicapi#921](https://github.com/sigma67/ytmusicapi/issues/921), [#682](https://github.com/sigma67/ytmusicapi/discussions/682)). The OAuth plumbing is left in place for when upstream fixes this; until then, use `browser.json`.
 
 ### Generating `browser.json`
 
@@ -135,4 +137,4 @@ The parser unit test (`tests/test_billboard_parser.py`) is the most important on
 
 - **Exit code 1, "LLM rescue init failed: GEMINI_API_KEY is not set"**: put the key in `.env` (copy from `.env.example`), set it in the environment, or pass `--no-llm` to disable the rescue.
 - **Exit code 2 (parse failure)**: Billboard changed their HTML. Update the selectors in [billboard_sync/billboard.py](billboard_sync/billboard.py) and add a fresh weekly snapshot under [tests/fixtures/](tests/fixtures/).
-- **Exit code 3 (auth failure)**: cookies expired. Regenerate `browser.json` and point `--auth-file` at the new file.
+- **Exit code 3 (auth failure)**: cookies expired. Regenerate `browser.json` and point `--auth-file` at the new file. (OAuth is not currently a working alternative — see the note under [Auth file](#auth-file).)

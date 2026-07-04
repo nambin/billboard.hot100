@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
 import time
 from typing import Optional
 
 from ytmusicapi import YTMusic
+from ytmusicapi.auth.oauth import OAuthCredentials
 
 from billboard_sync.matcher import SearchResult
 
@@ -48,10 +51,46 @@ def _parse_search_result(item: dict) -> Optional[SearchResult]:
     )
 
 
+def _load_auth(auth_file: str) -> YTMusic:
+    """Construct a `YTMusic` client, auto-detecting OAuth vs browser auth.
+
+    An `oauth.json` (from `ytmusicapi oauth`) holds a long-lived refresh token
+    and is distinguished by a top-level `refresh_token` key; a `browser.json`
+    is a dict of HTTP headers (cookie, authorization, …) with no such key.
+    OAuth files don't embed the client id/secret, so loading one requires
+    passing `OAuthCredentials(client_id, client_secret)` — read here from the
+    YTM_OAUTH_CLIENT_ID / YTM_OAUTH_CLIENT_SECRET env vars.
+    """
+    try:
+        with open(auth_file, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError as exc:
+        raise YTMusicAuthError(f"Auth file not found: {auth_file}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise YTMusicAuthError(f"Could not read auth file {auth_file}: {exc}") from exc
+
+    if isinstance(data, dict) and "refresh_token" in data:
+        client_id = os.environ.get("YTM_OAUTH_CLIENT_ID")
+        client_secret = os.environ.get("YTM_OAUTH_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise YTMusicAuthError(
+                "oauth.json detected but YTM_OAUTH_CLIENT_ID / "
+                "YTM_OAUTH_CLIENT_SECRET not set"
+            )
+        return YTMusic(
+            auth_file,
+            oauth_credentials=OAuthCredentials(client_id, client_secret),
+        )
+
+    return YTMusic(auth_file)
+
+
 class YTMusicClient:
     def __init__(self, auth_file: str) -> None:
         try:
-            self._yt = YTMusic(auth_file)
+            self._yt = _load_auth(auth_file)
+        except YTMusicAuthError:
+            raise
         except Exception as exc:
             raise YTMusicAuthError(str(exc)) from exc
 
